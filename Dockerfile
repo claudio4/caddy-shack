@@ -3,7 +3,8 @@ FROM docker.io/library/caddy:2.11.3-builder@sha256:f96a3b748f2ce4e5f6595453615da
 RUN xcaddy build \
     --with github.com/caddy-dns/cloudflare \
     --with github.com/relvacode/caddy-oidc && \
-    setcap cap_net_bind_service=+ep /usr/bin/caddy
+    # Strip the file capabilities so Caddy can run with DropCapability=all
+     setcap -r /usr/bin/caddy
 
 # We create the required directories here to later copy them because we can't directly create
 # them in a distroless image as there is no coreutils.
