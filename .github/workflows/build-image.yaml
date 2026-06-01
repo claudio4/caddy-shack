@@ -33,7 +33,13 @@ jobs:
             echo "Error: Could not parse Caddy version from Dockerfile"
             exit 1
           fi
+
+          MAJOR=$(echo "$VERSION" | cut -d'.' -f1)
+          MINOR=$(echo "$VERSION" | cut -d'.' -f1,2)
+
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "major=${MAJOR}" >> $GITHUB_OUTPUT
+          echo "minor=${MINOR}" >> $GITHUB_OUTPUT
 
       - name: Downcase Repository Name
         id: prep
@@ -63,6 +69,8 @@ jobs:
           push: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
           tags: |
             ghcr.io/${{ steps.prep.outputs.repo }}:latest
+            ghcr.io/${{ steps.prep.outputs.repo }}:${{ steps.parse_version.outputs.major }}
+            ghcr.io/${{ steps.prep.outputs.repo }}:${{ steps.parse_version.outputs.minor }}
             ghcr.io/${{ steps.prep.outputs.repo }}:${{ steps.parse_version.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
