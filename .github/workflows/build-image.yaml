@@ -1,0 +1,68 @@
+name: Build and publish the OCI image.
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - "Dockerfile"
+      - ".github/workflows/build-image.yaml"
+  pull_request:
+    branches:
+      - master
+    paths:
+      - "Dockerfile"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Parse Caddy Version from Dockerfile
+        id: parse_version
+        # Finds the first caddy tag (e.g. FROM caddy:2.11.3-builder) and extracts "2.11.3"
+        run: |
+          VERSION=$(awk -F'[ :@-]' '/^[[:space:]]*FROM .*caddy:/ {print $3; exit}' Dockerfile)
+          if [ -z "$VERSION" ]; then
+            echo "Error: Could not parse Caddy version from Dockerfile"
+            exit 1
+          fi
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Downcase Repository Name
+        id: prep
+        run: |
+          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          echo "repo=${REPO_LOWER}" >> $GITHUB_OUTPUT
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Build and push to registry ONLY on pushes to main.
+      # On PRs (including Dependabot PRs), we only test-compile to ensure the plugin builds successfully.
+      - name: Build and Push Custom Caddy Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+          tags: |
+            ghcr.io/${{ steps.prep.outputs.repo }}:latest
+            ghcr.io/${{ steps.prep.outputs.repo }}:${{ steps.parse_version.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
