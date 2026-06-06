@@ -5,12 +5,18 @@ on:
       - master
     paths:
       - "Dockerfile"
+      - "go.mod"
+      - "go.sum"
+      - "main.go"
       - ".github/workflows/build-image.yaml"
   pull_request:
     branches:
       - master
     paths:
       - "Dockerfile"
+      - "go.mod"
+      - "go.sum"
+      - "main.go"
   workflow_dispatch:
 
 permissions:
@@ -24,23 +30,41 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Parse Caddy Version from Dockerfile
+      - name: Parse versions from go.mod
         id: parse_version
-        # Finds the first caddy tag (e.g. FROM caddy:2.11.3-builder) and extracts "2.11.3"
         run: |
-          VERSION=$(awk -F'[ :@-]' '/^[[:space:]]*FROM .*caddy:/ {print $3; exit}' Dockerfile)
-          if [ -z "$VERSION" ]; then
-            echo "Error: Could not parse Caddy version from Dockerfile"
+          if [ ! -f go.mod ]; then
+            echo "Error: go.mod file not found!"
             exit 1
           fi
 
-          MAJOR=$(echo "$VERSION" | cut -d'.' -f1)
-          MINOR=$(echo "$VERSION" | cut -d'.' -f1,2)
+          GOMOD_JSON="$(go mod edit -json)"
+          CADDY_RAW=$(jq -r '.Require[] | select(.Path == "github.com/caddyserver/caddy/v2") | .Version' <<< "$GOMOD_JSON")
+          CF_RAW=$(jq -r '.Require[] | select(.Path == "github.com/caddy-dns/cloudflare") | .Version' <<< "$GOMOD_JSON")
+          OIDC_RAW=$(jq -r '.Require[] | select(.Path == "github.com/relvacode/caddy-oidc") | .Version' <<< "$GOMOD_JSON")
 
-          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          # Strip leading 'v'
+          CADDY_VER="${CADDY_RAW#v}"
+          CF_VER="${CF_RAW#v}"
+          OIDC_VER="${OIDC_RAW#v}"
+
+          if [ -z "$CADDY_VER" ]; then
+            echo "Error: Could not parse Caddy version from go.mod"
+            exit 1
+          fi
+
+          MAJOR=$(echo "$CADDY_VER" | cut -d'.' -f1)
+          MINOR=$(echo "$CADDY_VER" | cut -d'.' -f1,2)
+
+          #  RFC 3339 timestamp for org.opencontainers.image.created
+          BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          echo "version=${CADDY_VER}" >> $GITHUB_OUTPUT
           echo "major=${MAJOR}" >> $GITHUB_OUTPUT
           echo "minor=${MINOR}" >> $GITHUB_OUTPUT
-
+          echo "cf_version=${CF_VER}" >> $GITHUB_OUTPUT
+          echo "oidc_version=${OIDC_VER}" >> $GITHUB_OUTPUT
+          echo "build_date=${BUILD_DATE}" >> $GITHUB_OUTPUT
       - name: Downcase Repository Name
         id: prep
         run: |
@@ -72,5 +96,11 @@ jobs:
             ghcr.io/${{ steps.prep.outputs.repo }}:${{ steps.parse_version.outputs.major }}
             ghcr.io/${{ steps.prep.outputs.repo }}:${{ steps.parse_version.outputs.minor }}
             ghcr.io/${{ steps.prep.outputs.repo }}:${{ steps.parse_version.outputs.version }}
+          labels: |
+            org.opencontainers.image.version=${{ steps.parse_version.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ steps.parse_version.outputs.build_date }}
+            sh.caddy.plugin.cloudflare=${{ steps.parse_version.outputs.cf_version }}
+            sh.caddy.plugin.oidc=${{ steps.parse_version.outputs.oidc_version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

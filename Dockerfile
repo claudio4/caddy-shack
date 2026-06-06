@@ -1,10 +1,16 @@
-FROM docker.io/library/caddy:2.11.4-builder@sha256:08aab4980494ed7ed38d0249705d6f39b482c3373b578af7494168d19df62411 AS builder
+FROM docker.io/library/golang:1.26.4@sha256:68cb6d68bed024785b69195b89af7ac7a444f27791435f98647edff595aa0479 AS builder
 
-RUN xcaddy build \
-    --with github.com/caddy-dns/cloudflare \
-    --with github.com/relvacode/caddy-oidc && \
-    # Strip the file capabilities so Caddy can run with DropCapability=all
-     setcap -r /usr/bin/caddy
+WORKDIR /src
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY main.go ./
+
+RUN CGO_ENABLED=0 go build \
+    -ldflags="-w -s" \
+    -o /usr/bin/caddy \
+    main.go
 
 # We create the required directories here to later copy them because we can't directly create
 # them in a distroless image as there is no coreutils.
@@ -24,6 +30,9 @@ ENV XDG_DATA_HOME=/data
 VOLUME /config
 VOLUME /data
 
+LABEL org.opencontainers.image.title="Caddy Shack"
+LABEL org.opencontainers.image.description="Distroless Caddy image with Caddy OIDC and CF DNS"
+LABEL org.opencontainers.image.licenses=Apache-2.0
 LABEL org.opencontainers.image.source="https://github.com/claudio4/caddy-shack"
 
 EXPOSE 80
