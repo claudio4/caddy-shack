@@ -65,42 +65,48 @@ jobs:
           echo "cf_version=${CF_VER}" >> $GITHUB_OUTPUT
           echo "oidc_version=${OIDC_VER}" >> $GITHUB_OUTPUT
           echo "build_date=${BUILD_DATE}" >> $GITHUB_OUTPUT
+
       - name: Downcase Repository Name
         id: prep
         run: |
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           echo "repo=${REPO_LOWER}" >> $GITHUB_OUTPUT
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | buildah login -u ${{ github.actor }} --password-stdin ghcr.io
 
-      # Build and push to registry ONLY on pushes to main.
-      # On PRs (including Dependabot PRs), we only test-compile to ensure the plugin builds successfully.
-      - name: Build and Push Custom Caddy Image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
-          tags: |
-            ghcr.io/${{ steps.prep.outputs.repo }}:latest
-            ghcr.io/${{ steps.prep.outputs.repo }}:${{ steps.parse_version.outputs.major }}
-            ghcr.io/${{ steps.prep.outputs.repo }}:${{ steps.parse_version.outputs.minor }}
-            ghcr.io/${{ steps.prep.outputs.repo }}:${{ steps.parse_version.outputs.version }}
-          labels: |
-            org.opencontainers.image.version=${{ steps.parse_version.outputs.version }}
-            org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.created=${{ steps.parse_version.outputs.build_date }}
-            sh.caddy.plugin.cloudflare=${{ steps.parse_version.outputs.cf_version }}
-            sh.caddy.plugin.oidc=${{ steps.parse_version.outputs.oidc_version }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: Build Caddy Image
+        run: |
+          buildah bud \
+            --format oci \
+            --label "org.opencontainers.image.title=Caddy Custom Build" \
+            --label "org.opencontainers.image.description=Statically compiled Caddy server with Cloudflare DNS and OIDC plugins" \
+            --label "org.opencontainers.image.source=https://github.com/${{ github.repository }}" \
+            --label "org.opencontainers.image.licenses=Apache-2.0" \
+            --label "org.opencontainers.image.version=${{ steps.parse_version.outputs.version }}" \
+            --label "org.opencontainers.image.revision=${{ github.sha }}" \
+            --label "org.opencontainers.image.created=${{ steps.parse_version.outputs.build_date }}" \
+            --label "sh.caddy.plugin.cloudflare=${{ steps.parse_version.outputs.cf_version }}" \
+            --label "sh.caddy.plugin.oidc=${{ steps.parse_version.outputs.oidc_version }}" \
+            -t caddy-local .
+
+      # Pushes ONLY on pushes to master. On PRs, the "Build" step above acts as the validation.
+      - name: Push to GHCR with zstd:chunked compression
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        run: |
+          TAGS=(
+            "latest"
+            "${{ steps.parse_version.outputs.major }}"
+            "${{ steps.parse_version.outputs.minor }}"
+            "${{ steps.parse_version.outputs.version }}"
+          )
+
+          for TAG in "${TAGS[@]}"; do
+            echo "Pushing tag: ${TAG}"
+            buildah push \
+              --compression-format=zstd:chunked \
+              caddy-local \
+              "docker://ghcr.io/${{ steps.prep.outputs.repo }}:${TAG}"
+          done
