@@ -1,5 +1,5 @@
 {
-    # this allows reloads
+	# this allows reloads
 	admin unix//run/admin.sock
 
 	email {env.EMAIL}
@@ -28,7 +28,7 @@
 			name caddy-oidc
 			secret "pwgen 1 32 or 64"
 		}
-}
+	}
 }
 
 # Manually implement http tp https using the socket activated socked
@@ -51,7 +51,7 @@ http:// {
 }
 
 (external-matcher) {
-    # Restrict connections to local network and vpn
+	# Restrict connections to local network and vpn
 	@external not remote_ip 10.69.0.0/24 10.69.0.248/24 192.168.1.0/24
 }
 
