@@ -1,0 +1,14 @@
+[Unit]
+Description=Socket activation for Caddy including HTTP, HTTPS and HTTP3
+
+[Socket]
+BindIPv6Only=both
+# First socket (fd/3)
+ListenStream=[::]:80
+# Second socket (fd/4)
+ListenStream=[::]:443
+# Third socket (fd/5)
+ListenDatagram=[::]:443
+
+[Install]
+WantedBy=sockets.target

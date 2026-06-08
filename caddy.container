@@ -1,0 +1,30 @@
+[Unit]
+Description=Caddy HTTP server
+BindsTo=caddy.socket
+After=caddy.socket
+
+[Container]
+AddCapability=NET_BIND_SERVICE
+AutoUpdate=registry
+DNS=1.1.1.1
+DNS=8.8.8.8
+DropCapability=all
+Environment=EMAIL=hostmaster@domain.tld
+Group=nonroot
+Image=ghcr.io/claudio4/caddy-shack:2
+Network=proxynet.network
+NoNewPrivileges=true
+Notify=true
+ReadOnly=true
+Secret=caddy-cloudflare-token,type=env,target=CLOUDFLARE_API_TOKEN
+Mount=type=tmpfs,destination=/run,tmpfs-size=1k,tmpfs-mode=1777
+User=nonroot
+UserNS=auto
+Volume=/mnt/containers/caddy/data:/data:idmap=uids=@1000-65532-1;gids=@1000-65532-1
+Volume=/mnt/containers/caddy/config:/etc/caddy:ro,idmap=uids=@1000-65532-1;gids=@1000-65532-1
+
+[Service]
+ExecReload=/usr/bin/podman exec systemd-%N /usr/bin/caddy reload --config /etc/caddy/Caddyfile --address unix//run/admin.sock
+
+[Install]
+WantedBy=default.target

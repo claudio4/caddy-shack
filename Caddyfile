@@ -1,0 +1,77 @@
+{
+    # this allows reloads
+	admin unix//run/admin.sock
+
+	email {env.EMAIL}
+	dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+	ech ech.domain.tld
+
+	# Auto redirects don't play nice with socket activation
+	auto_https disable_redirects
+	acme_dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+	tls_resolvers 1.1.1.1 8.8.8.8
+
+	# Get the socket from systemd socket activation
+	default_bind fd/4 :443 {
+		protocols h1 h2
+	}
+	default_bind fdgram/5 {
+		protocols h3
+	}
+
+	oidc exxample {
+		issuer https://idm.example.tld/
+		client_id example
+		client_secret "oidc-secret"
+		authenticate bearer
+		authenticate cookie {
+			name caddy-oidc
+			secret "pwgen 1 32 or 64"
+		}
+}
+}
+
+# Manually implement http tp https using the socket activated socked
+http:// {
+	bind fd/3 {
+		protocols h1
+	}
+	redir https://{host}{uri}
+}
+
+(secure-headers) {
+	header {
+		Strict-Transport-Security "max-age=63072000"
+		X-Frame-Options "SAMEORIGIN"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "origin-when-cross-origin"
+		-Server
+		-Via
+	}
+}
+
+(external-matcher) {
+    # Restrict connections to local network and vpn
+	@external not remote_ip 10.69.0.0/24 10.69.0.248/24 192.168.1.0/24
+}
+
+(internal-secure-headers) {
+	import external-matcher
+	respond @external "Forbidden" 403
+
+	header {
+		X-Frame-Options "SAMEORIGIN"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "origin-when-cross-origin"
+		-Server
+		-Via
+	}
+}
+
+(standard-limits) {
+	request_body {
+		max_size 1MB
+	}
+}
+
+import sites/*.caddy
