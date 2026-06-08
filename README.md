@@ -38,7 +38,7 @@ podman run -d \
   --name caddy \
   -p 80:80 \
   -p 443:443 \
-  -v /path/to/Caddyfile:/etc/caddy/Caddyfile:Z \
+  -v /path/to/caddyfile/folder:/etc/caddy:Z \
   -v caddy_data:/data:Z \
   -v caddy_config:/config:Z \
   ghcr.io/claudio4/caddy-shack:latest
