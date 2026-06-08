@@ -9,6 +9,7 @@ COPY main.go ./
 
 RUN CGO_ENABLED=0 go build \
     -ldflags="-w -s" \
+    -trimpath -tags nobadger,nomysql,nopgx \
     -o /usr/bin/caddy \
     main.go
 
